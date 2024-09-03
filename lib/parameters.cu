@@ -1,18 +1,23 @@
 #include "parameters.h"
-unsigned int dynamic_num[4] = {1,2,0,0};
-unsigned int static_num[4] = {5,3,0,1};
+unsigned int dynamic_num[4] = {0,0,0,0};
+unsigned int static_num[4] = {0,0,2,3};
 extern const int lThreadsPerBlock = 256;
 extern const unsigned long long  llSamplerate = 280000000;
-extern const double ramp_time = 0.1;
-double static_freq[4][4096]={{10000000,20000000,30000000,40000000,50000000},
-    {100000000,110000000,120000000},
+extern const double ramp_time = 3;
+double static_freq[4][4096]={{},
     {},
-    {70000000}};
-double destination_freq[4][4096]={{100000000},
-    {130000000,140000000},
+    {99683000-2500000,99683000+2500000}, // The centering frequency for the 850nm X axis is 99.683 MHz
+    {98900000-5000000,98900000,98900000+5000000}}; // The centering frequency for the 850nm Y axis is 98.9 MHz
+double destination_freq[4][1024]={{},
+    {},
     {},
     {}};
 unsigned int tone_count[5];
 unsigned int dynamic_tone_count[5];
-int dynamic_list[1024] = {0,5,6};   // Index of tones that is to be moved
-int static_list[16384]={1,2,3,4,7,8}; // Index of tones that is not moved
+int dynamic_list[1024] = {};   // Index of tones that are to be moved
+int static_list[16384]={}; // Index of tones that are not moved
+double amp_list[16384]={};
+double power_normalizer[4] = {0,0,0,0};
+double frequency_limits[4] = {59e6-5e5,105e6+5e5,80e6-5e5,112e6+5e5};
+double new_static_freq[4][4096]={{0},{0},{0},{0}};
+int amplitude_limit=450;

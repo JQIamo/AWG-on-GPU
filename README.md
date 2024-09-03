@@ -1,11 +1,14 @@
 # AWG_on_GPU
- Arbitrary waveform generation on a GPU using the additive synthesis framework for waveform synthesis
+
+Arbitrary waveform generation on a GPU using the additive synthesis framework for waveform synthesis.
 
 ## Overview
 
-This is a software achitecture for real-time arbitrary waveform generation based on a CUDA GPU and PCIe DAC module, allowing for a high throughput static waveform generation as well as a flexible and low-latecy computation of complex waveforms. 
+This is a software achitecture for real-time arbitrary waveform generation based on a CUDA GPU and PCIe DAC module, allowing for a high throughput static waveform generation as well as a flexible and low-latecy computation of complex waveforms.  
 
-Currently this project is implemented with two pathways of generating dynamic waveforms with chirping tones. 
+Currently this project is implemented with two pathways of generating dynamic waveforms with chirping tones, allowing the waveforms to be computed in advance or in parallel of streaming.  
+
+The project is implemented with a primitive TCP based control logic that is subject to improvement or replacement according to users' need.  
 
 ## Hardware and Environment
 
@@ -19,7 +22,6 @@ To compile the code, you may also need to [g++](https://gcc.gnu.org/) installed 
 
 With the drivers and compilers verified, you should be able to compile with the code. You need to modify the `Makefile` to make sure: 1. The CUDA driver directory is set properly; 2. The source file name matches the code you would like to compile, which by default should be one of the `waveform_synthesis*.cu` files. Upon the successful compilation, an executable `waveform_synthesis` should appear in the code directory.
 
-
 ## Inference
 
 Currently there is no GUI interface. The parameters of generated waveform could be editted in `parameters` files. For real-time interface, the server in `waveform_synthesis*.cu`, or other kinds of interruption needs to be implemented.
@@ -30,4 +32,4 @@ The Nvidia NSight Profile of the cuda function in this program is placed in the 
 
 ## Citing
 
-Please see the [2403.15582](https://arxiv.org/abs/2403.15582) correlated with this project. Please contanct Juntian Tu juntian"at"umd.edu for issues related to this repository.
+Please see the [paper](https://arxiv.org/abs/2403.15582) correlated with this project. Please contanct Juntian Tu (juntian"at"umd.edu) for issues related to this repository.
