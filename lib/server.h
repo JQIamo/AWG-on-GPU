@@ -26,9 +26,8 @@ extern volatile std::atomic<bool> amp_flag;
 extern volatile std::atomic<bool> static_endflag;
 extern volatile std::atomic<bool>  static_flag;
 extern int TCP_server();
-extern void loadINterpolation();
 extern volatile std::atomic<bool>  static_pulseflag;
 extern volatile std::atomic<bool>  update_flag;
-extern double new_static_freq[4][4096];
 extern int *update_index_map;
+extern void reset_amp(int channel, int value);
 #endif

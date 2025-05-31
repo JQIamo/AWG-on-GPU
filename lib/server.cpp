@@ -12,7 +12,7 @@ fd_set readfds;
 
 int TCP_server() {
     const int PORT = 56456;
-    const int BUFFER_SIZE = 65536;
+    const int BUFFER_SIZE = 655360;
     int server_fd, new_socket, valread;
     struct sockaddr_in address;
     int opt = 1;
@@ -22,15 +22,11 @@ int TCP_server() {
     int sd, maxsd, activity;
     int clients[5];
 
-    // server_flag=false;
-
-    // Create socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         std::cerr << "Socket creation failed" << std::endl;
         return 1;
     }
 
-    // Forcefully attach socket to the port 8080
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         std::cerr << "Setsockopt failed" << std::endl;
         return 1;
@@ -47,12 +43,10 @@ int TCP_server() {
 
     waiting:
 
-    // Listen for incoming connections
     if (listen(server_fd, 3) < 0) {
         std::cerr << "Listen failed" << std::endl;
         return 1;
     }
-
 
     // Receive data from client
     while (!stop_flag) {
@@ -94,13 +88,18 @@ int TCP_server() {
             for (int i = 0; i < 5; i++) {
                 sd = clients[i];
                 if (FD_ISSET(sd, &readfds)) {
-                    valread = read(sd, buffer, BUFFER_SIZE);
-                    if (valread < 0) {
-                        std::cerr << "Connection closed or read error" << std::endl;\
-                        std::cerr << strerror(errno) << std::endl;
-                        close(sd);
-                        clients[i]=0;
-                        goto waiting;
+                    int buf_pos=0;
+                    while (!stop_flag){
+                        valread = read(sd, buffer+buf_pos, BUFFER_SIZE);
+                        if (valread < 0) {
+                            std::cerr << "Connection closed or read error" << std::endl;\
+                            std::cerr << strerror(errno) << std::endl;
+                            close(sd);
+                            clients[i]=0;
+                            goto waiting;
+                        }
+                        buf_pos+=valread;
+                        if (valread==0 && buf_pos>0){break;}
                     }
 
                     std::cout << "Received message: " << buffer << std::endl;
@@ -139,11 +138,13 @@ int TCP_server() {
                             for (int j = 0; j < static_num[i]; j++){
                                 static_freq[i][j] = atof(strtok(NULL,","));
                                 sorter[i][j]=std::make_pair(static_freq[i][j],j);
+                                // std::cout<<"sorter["<<i<<"]["<<j<<"] = "<<static_freq[i][j]<<std::endl;
                             }
 
                             std::sort(sorter[i].begin(),sorter[i].end());
                             for (int j = 0; j < static_num[i]; j++){
                                 static_freq[i][j] = sorter[i][j].first;
+                                // std::cout << "INput: "<< static_freq[i][j] << std::endl;
                                 new_static_freq[i][j] = static_freq[i][j];
                             }
                         }
@@ -156,15 +157,19 @@ int TCP_server() {
                                 }
                                 lcounter += sorter[i].size();
                             }
-                        int dynamic_indexes[1024];
+                        // int dynamic_indexes[1024];
+                        int dynamic_indexes[16384];
+
                         if (d_total > 0) {
                             for (int i = 0; i < 4; i++){
                                 for (int j = 0; j < dynamic_num[i]; j++){
                                     destination_freq[i][j] = atof(strtok(NULL,","));
                                 }
                             }
+
                             lcounter = 0;
                             for (int i = 0; i < d_total; i++){
+                                // int tmp = atoi(strtok(NULL,","));
                                 dynamic_indexes[i] = atoi(strtok(NULL,","));
                                 dynamic_list[i] = sorter_flat[dynamic_indexes[i]].second;
                                 int tone_count_tmp = 0;
@@ -174,13 +179,15 @@ int TCP_server() {
                                         new_static_freq[j][dynamic_list[i]-tone_count_tmp] = destination_freq[j][i-dynamic_tone_list_tmp];
                                         break;
                                     }
+
                                     tone_count_tmp += static_num[j];
                                     dynamic_tone_list_tmp += dynamic_num[j];
                                 }
                                 for (int j = lcounter; j < dynamic_indexes[i]; j++){
-                                    static_list[j] = sorter_flat[j+i].second;
+                                    // std::cout<<tone_count_tmp<<","<<dynamic_tone_list_tmp<<","<<j<<"\n"<<std::endl;
+                                    static_list[j] = sorter_flat[j].second;
                                 }           
-                                lcounter = dynamic_indexes[i];             
+                                lcounter = dynamic_indexes[i];         
                             }
                         }
 
@@ -192,10 +199,15 @@ int TCP_server() {
                             for (int i = 0; i < 4; i++){
                                 power_normalizer[i] = 0;
                                 for (int j = 0; j < static_num[i]; j++){
-                                    power_normalizer[i] += amp_list[count];
-                                    count += 1;
+                                    // power_normalizer[i] += amp_list[count];
+                                    // power_normalizer[i] += amp_list[count];
+                                    // count += 1;
+                                    power_normalizer[i] += 1;
                                 }
                             }
+                            for (int i = 0; i < s_total; i++){
+                                final_amp_list[sorter_flat[i].second] = atof(strtok(NULL,","));
+                            } 
                         }else{
                             for (int i = 0; i < 4; i++){
                                 power_normalizer[i] = static_num[i];
@@ -205,9 +217,11 @@ int TCP_server() {
                         if (strtok(NULL,",")[0]!='g'){
                             std::cerr << "Error in receiving." << std::endl;
                         }else{
+                            std::cout<<"Done"<<std::endl;
                             update_flag=false;
                             server_flag=true;
                         }
+                        // server_flag=true;
                     }else if (strstr(buffer, "stop") != nullptr){
                         stop_flag=true;
                         break;
@@ -228,7 +242,7 @@ int TCP_server() {
                         int s_total=0;
                         int d_total=0;
 
-                        double new_amp_list[4096];
+                        double new_amp_list[16384];
                         unsigned int new_static_num[4];
                         
                         
@@ -247,12 +261,17 @@ int TCP_server() {
                         }
                         int tmp_indexer = 0;
                         for (int i = 0; i < 4; i++){
+                            // power_normalizer[i] = 0;
                             for (int j = 0; j < new_static_num[i]; j++){
                                 int static_index = atoi(strtok(NULL,","));
                                 new_static_freq[i][j] = static_freq[i][static_index-tone_count[i]];
+                                // std::cout << "static" << static_index-tone_count[i]  << "," << j << ","<<new_static_freq[i][j] << std::endl;
                                 update_index_map[tmp_indexer+j] = static_index;
                                 if (amp_flag){
+                                    
                                     new_amp_list[tmp_indexer+j] = amp_list[static_index];
+                                    // std::cout << "updates" << static_index << ","<<tmp_indexer << "," << j <<","<<new_amp_list[tmp_indexer+j]<< std::endl;
+                                    // power_normalizer[i] += amp_list[static_index];
                                 }
                             }
                             for (int j = 0; j < new_static_num[i]; j++){
@@ -302,10 +321,13 @@ int TCP_server() {
                             update_flag = true;
                             server_flag=true;
                         }
+                        // server_flag=true;
                     }else if(strstr(buffer, "amp_set") != nullptr){
-                        lMaxOutputLevel = atoi(strtok(buffer,","));
-                        if (lMaxOutputLevel > 80 && lMaxOutputLevel <= 2500){
-                            reset_amp();      
+                        int channel = atoi(strtok(buffer,","));
+                        int value = atoi(strtok(buffer,","));
+                        if (value > 80 && value <= 2500 && channel < lNumCh){
+                            reset_amp(channel, value);      
+                            std::cout<<"Set Amplitude: "<<value<<std::endl;      
                         }else{
                             std::cerr << "Amplitude out of range." << std::endl;
                         }
@@ -322,6 +344,8 @@ int TCP_server() {
     std::cout << "Server stopped." << std::endl;
     memset(buffer, 0, BUFFER_SIZE);
     stop_flag=true;
+    // Close sockets
     close(server_fd);
+
     return 0;
 }

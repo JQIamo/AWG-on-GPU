@@ -1,15 +1,30 @@
 /*
 Waveform_synthesis_playback.cu
 Author: Juntian Tu
-Date: 2024.09.03
+Date: 2025.01
 
 This is the implementation for the playback pathway. Change the source file name in the Makefile to compile the program.
 */
 
-#include "lib/cuda_functions.h"
+#include "lib/cuda_functions_playback.h"
 #include <atomic>
 #   include <iostream>
 #   include <thread>
+#   include <signal.h>
+
+
+std::thread serverThread;
+std::thread staticThread;
+void clean_exit(){
+    stop_flag=true;
+    printf ("\nExiting...\n");
+    spcm_vClose (hCard);
+    cudaDeviceReset();
+}
+
+void handle_sigint(int sig) {
+    if (sig == SIGINT) clean_exit();
+}
 
 using namespace std;
 char        szErrorTextBuffer[ERRORTEXTLEN];
@@ -21,64 +36,30 @@ volatile std::atomic<bool> static_flag(true);
 
 void* DMABuffer = NULL;
 
-void reset_amp(){
-    if (lMaxOutputLevel>amplitude_limit){lMaxOutputLevel=amplitude_limit;}
-    for (int i = 0; i < lNumCh; ++i){
-        spcm_dwSetParam_i32 (hCard, SPC_AMP0       + i * (SPC_AMP1        - SPC_AMP0),      lMaxOutputLevel);
+void reset_amp(int channel, int value){
+    if (channel<0){
+        for (int i = 0; i < lNumCh; ++i){
+            int tempval = value;
+            if (tempval>amplitude_limit[i]){tempval=amplitude_limit[i];}
+            spcm_dwSetParam_i32 (hCard, SPC_AMP0       + i * (SPC_AMP1        - SPC_AMP0),      tempval);
+        }
+    }else{
+        int tempval = value;
+        if (tempval>amplitude_limit[channel]){tempval=amplitude_limit[channel];}
+        spcm_dwSetParam_i32 (hCard, SPC_AMP0       + channel * (SPC_AMP1        - SPC_AMP0),      tempval);
     }
 }
 
-void cuda_cleanup ()
-    {
-        cudaDeviceSynchronize();
-        for (int i = 0; i < lNumCh; ++i){
-            cudaFree (summed_buffer[i]);
-            summed_buffer[i] = NULL;
-            cudaFree (saved_buffer[i]);
-            saved_buffer[i] = NULL;
-            cudaFree (dynamic_saved_buffer[i]);
-            dynamic_saved_buffer[i] = NULL;
-        }
-        cudaFree(summed_buffer_cuda);
-        summed_buffer_cuda = NULL;
-        cudaFree(final_buffer_cuda);
-        final_buffer_cuda = NULL;
-        cudaFree(saved_buffer_cuda);
-        saved_buffer_cuda = NULL;
-        cudaFree(dynamic_saved_buffer_cuda);
-        dynamic_saved_buffer_cuda = NULL;
-        cudaFree(dynamic_list_cuda);
-        dynamic_list_cuda = NULL;
-        cudaFree(amp_list_cuda);
-        amp_list_cuda = NULL;
-        cudaFree(static_list_cuda);
-        static_list_cuda = NULL;
-        cudaFree(real_destination_freq_cuda);
-        real_destination_freq_cuda = NULL;
-        cudaFree(real_static_freq_cuda);
-        real_static_freq_cuda = NULL;
-        cudaFree(static_buffer_cuda);
-        static_buffer_cuda = NULL;
-        if (!update_flag){
-            cudaFree(phase_list_cuda);
-            phase_list_cuda = NULL;
-            cudaFree(new_phase_list_cuda);
-            new_phase_list_cuda = NULL;
-        }
-        cudaFree(update_index_map_cuda);
-        update_index_map_cuda = NULL;
-        if (eCudaErr=cudaPeekAtLastError()) printf("Cuda Buffer Clean Failed: %s\n",cudaGetErrorString(eCudaErr));
-        cudaDeviceSynchronize();
-    }
+
 
 
 // settings for the FIFO mode buffer handling
 uint64       lNotifySize =  MEGA_B(2); // The size of data the card will execute each time before signaling to the GPU
 uint32       lBufferSize =  MEGA_B(64);
 uint64       HBufferSize =  MEGA_B(64); // The actual buffer used on the AWG; must be a power of 2 and should be no more than 4 GB (lower size reduces delay)
-std::thread staticThread;
+
 // Parameter settings   
-int32       lMaxOutputLevel  = amplitude_limit; // +-1 Volt
+int32       lMaxOutputLevel  = 2500; // +-1 Volt
 unsigned long long sPointerPosition=0;
 
 void instructionReceiver(){
@@ -99,6 +80,7 @@ void varReset(){
 void static_looper(){
     while (!stop_flag){
         while (static_flag && !stop_flag){
+            static_pulseflag = false;
             while (!static_endflag.load() && !stop_flag){
                 if ((dwError = spcm_dwSetParam_i32 (hCard, SPC_M2CMD, M2CMD_DATA_WAITDMA)) != ERR_OK)
                 {
@@ -122,8 +104,8 @@ void static_looper(){
                 }
             }
             static_endflag=false;
-            static_pulseflag = true;
         }
+        static_pulseflag = true;
     }
 }
 
@@ -136,6 +118,7 @@ main
 int main ()
 {
     
+    bool        iskeypressed = false;    
     dynamic_buffersize = 2*round(ramp_time*llSamplerate);
     // ------------------------------------------------------------------------
 
@@ -158,12 +141,11 @@ int main ()
     spcm_dwSetParam_i32 (hCard, SPC_CLOCKMODE,      SPC_CM_INTPLL);         // clock mode internal PLL
     spcm_dwSetParam_i64 (hCard, SPC_SAMPLERATE,     llSamplerate);
     spcm_dwSetParam_i32 (hCard, SPC_TIMEOUT,        5*1000);             // Timeout if necessary
-    if (lMaxOutputLevel>amplitude_limit){lMaxOutputLevel=amplitude_limit;}
+    reset_amp(-1, lMaxOutputLevel);
     for (int lChIdx = 0; lChIdx < lNumCh; ++lChIdx)
     {
         spcm_dwSetParam_i32 (hCard, SPC_FILTER0 + lChIdx * (SPC_FILTER1 - SPC_FILTER0), 0);
         spcm_dwSetParam_i32 (hCard, SPC_ENABLEOUT0 + lChIdx * (SPC_ENABLEOUT1 - SPC_ENABLEOUT0), 1);
-        spcm_dwSetParam_i32 (hCard, SPC_AMP0       + lChIdx * (SPC_AMP1        - SPC_AMP0),      lMaxOutputLevel);
     }
 
     spcm_dwSetParam_i64 (hCard, SPC_DATA_OUTBUFSIZE,  HBufferSize);         // Set actual buffer size on the AWG 
@@ -190,8 +172,8 @@ int main ()
     
     lBytesPerChannelInNotifySize = lNotifySize / lNumCh;
     dynamic_loopcount = (int)ceil((double)dynamic_buffersize/lBytesPerChannelInNotifySize);
-    std::thread serverThread(instructionReceiver);
-    while (!stop_flag){
+    serverThread = std::thread(instructionReceiver);
+    while (1){
         while (!server_flag && !stop_flag){volatile int nulvar = server_flag;}
         start_and_reset: 
         if (stop_flag){break;} 
@@ -200,22 +182,21 @@ int main ()
         cuda_cleanup();
         varReset();
         server_flag = false;
-        continue_flag=false;
-        if (eCudaErr=cudaPeekAtLastError()) printf("QCUDA Error Peek: %s\n",cudaGetErrorString(eCudaErr));
+        continue_flag=false; //For testing
         if (init_flag)printf("Start generating waveform\n");
-        for (int ch = 0; ch < lNumCh; ch++){
+        for (int ch = 0; ch < 4; ch++){
             dynamic_total += dynamic_num[ch];
             static_total += static_num[ch];
         }
         double dyn_checker = (double)dynamic_loopcount*dynamic_total*lBytesPerChannelInNotifySize/1024/1024/1024;
-        double stt_checker = (double) (dynamic_total+lNumCh*static_total)*lBytesPerChannelInNotifySize/1024/1024/1024;
+        double stt_checker = (double) sizeof(double)/sizeof(short)*(dynamic_total+static_total)*lBytesPerChannelInNotifySize/1024/1024/1024;
         if (init_flag){
             printf("Buffersize for single dynamic tweezer: %f MiB\n",dyn_checker * 1024 / dynamic_total);
             printf("Buffersize for all dynamic tweezer: %f GiB\n",dyn_checker);
             printf("Buffersize for all static tweezer: %f GiB\n",stt_checker);
             printf("Total buffersize: %f GiB\n",dyn_checker+stt_checker);
         }
-        if (dyn_checker+stt_checker > 22){
+        if (dyn_checker+stt_checker > 22.5){
             printf("Buffer required exceeds GPU memory\n");
             spcm_vClose (hCard);
             return EXIT_FAILURE;
@@ -227,13 +208,12 @@ int main ()
         }
         cudaDeviceSynchronize();
         tone_counter(dynamic_total);
-        for (int ch = 0; ch < lNumCh; ch++){
+        for (int ch = 0; ch < 4; ch++){
             for (int i = 0; i < static_num[ch]; i++){
                 double freq_approxed = freq_approx(static_freq[ch][i],static_length);
                 if (freq_approxed < frequency_limits[ch/2*2]|| freq_approxed > frequency_limits[ch/2*2+1]){
                     cerr<<"Frequency out of range: "<< freq_approxed <<":" << ch <<":" << i << endl;
-                    spcm_vClose (hCard);
-                    cudaDeviceReset();
+                    clean_exit();
                     return EXIT_FAILURE;
                 }else{
                     real_static_freq[tone_count[ch]+i] = freq_approxed;
@@ -242,9 +222,8 @@ int main ()
             for (int i = 0; i < dynamic_num[ch]; i++){
                 double freq_approxed = freq_approx(destination_freq[ch][i],static_length);
                 if (freq_approxed < frequency_limits[ch/2*2]|| freq_approxed > frequency_limits[ch/2*2+1]){
-                    cerr<<"Frequency out of range"<< freq_approxed << endl;
-                    spcm_vClose (hCard);
-                    cudaDeviceReset();
+                    cerr<<"Frequency out of range:"<< freq_approxed << endl;
+                    clean_exit();
                     return EXIT_FAILURE;
                 }else{
                     real_destination_freq[dynamic_tone_count[ch]+i] = freq_approxed;
@@ -252,21 +231,22 @@ int main ()
             }
         }
         cudaDeviceSynchronize();
-        if (staticBufferMalloc()){
-            spcm_vClose (hCard);
-            cudaDeviceReset();
+        if (if_mapped){
+            StaticAmpMapper( real_static_freq, amp_freq_map,  amp_map_static, total_divider);
+        }
+        if (staticBufferInit()){
+            clean_exit();
             return EXIT_FAILURE;
         };
         if (dynamic_total){
-            if (dynamicBufferMalloc()){
-                spcm_vClose (hCard);
-                cudaDeviceReset();
+            if (dynamicBufferInit()){
+                clean_exit();
                 return EXIT_FAILURE;
             }
         }
         
         
-        for (int ch = 0; ch < lNumCh; ch++){
+        for (int ch = 0; ch < 4; ch++){
             for (int i = 0; i < static_num[ch]; i++){
                 static_freq[ch][i] = new_static_freq[ch][i];
             }
@@ -276,18 +256,31 @@ int main ()
             if (!amp_flag)StaticWaveGeneration_update<<<(static_length/lThreadsPerBlock),lThreadsPerBlock>>>(real_static_freq_cuda,static_buffer_cuda,summed_buffer_cuda,phase_list_cuda);
             else StaticWaveGeneration_update_amp<<<(static_length/lThreadsPerBlock),lThreadsPerBlock>>>(real_static_freq_cuda,amp_list_cuda,static_buffer_cuda,summed_buffer_cuda,phase_list_cuda);
         }else{
-            if (!amp_flag)StaticWaveGeneration<<<(static_length/lThreadsPerBlock),lThreadsPerBlock>>>(real_static_freq_cuda,static_buffer_cuda,summed_buffer_cuda,phase_list_cuda);
+            if (!amp_flag){
+                if (if_mapped){
+                    printf("MAPPED!!\n");
+                    StaticWaveGeneration_amp_mapped<<<(static_length/lThreadsPerBlock),lThreadsPerBlock>>>(real_static_freq_cuda,amp_map_cuda,total_divider_cuda,static_buffer_cuda,summed_buffer_cuda,phase_list_cuda);
+                }else{
+                    StaticWaveGeneration<<<(static_length/lThreadsPerBlock),lThreadsPerBlock>>>(real_static_freq_cuda,static_buffer_cuda,summed_buffer_cuda,phase_list_cuda);
+                }
+            }
             else StaticWaveGeneration_amp<<<(static_length/lThreadsPerBlock),lThreadsPerBlock>>>(real_static_freq_cuda,amp_list_cuda,static_buffer_cuda,summed_buffer_cuda,phase_list_cuda);
         }
         cudaDeviceSynchronize();
         cudaMemcpy(new_phase_list_cuda,phase_list_cuda,static_total*sizeof(double),cudaMemcpyDeviceToDevice);
 
         if (dynamic_total){
-            if (!amp_flag){Pre_computer<<<static_length/lThreadsPerBlock,lThreadsPerBlock>>>(static_buffer_cuda,static_list_cuda,real_destination_freq_cuda,
+            if (if_mapped){
+                if (!amp_flag){Pre_computer_amp_mapped<<<static_length/lThreadsPerBlock/2,lThreadsPerBlock>>>(static_buffer_cuda, static_list_cuda, real_destination_freq_cuda, 
+                            dynamic_list_cuda, final_buffer_cuda, dynamic_saved_buffer_cuda, real_static_freq_cuda,amp_map_cuda, phase_list_cuda,new_phase_list_cuda);}
+                else{Pre_computer_amp_mapped_modulated<<<static_length/lThreadsPerBlock/2,lThreadsPerBlock>>>(static_buffer_cuda, static_list_cuda, real_destination_freq_cuda, 
+                            dynamic_list_cuda, final_buffer_cuda, dynamic_saved_buffer_cuda, real_static_freq_cuda,amp_map_cuda, phase_list_cuda,new_phase_list_cuda,amp_list_cuda,final_amp_list_cuda);}
+            }else if (!amp_flag){Pre_computer<<<static_length/lThreadsPerBlock/2,lThreadsPerBlock>>>(static_buffer_cuda,static_list_cuda,real_destination_freq_cuda,
                         dynamic_list_cuda,final_buffer_cuda,dynamic_saved_buffer_cuda,real_static_freq_cuda,phase_list_cuda,new_phase_list_cuda);
-            }else{
-                Pre_computer_amp<<<static_length/lThreadsPerBlock,lThreadsPerBlock>>>(static_buffer_cuda,static_list_cuda,real_destination_freq_cuda,
-                        dynamic_list_cuda,final_buffer_cuda,dynamic_saved_buffer_cuda,real_static_freq_cuda,amp_list_cuda,phase_list_cuda,new_phase_list_cuda);
+            }
+            else{
+                Pre_computer_amp<<<static_length/lThreadsPerBlock/2,lThreadsPerBlock>>>(static_buffer_cuda,static_list_cuda,real_destination_freq_cuda,
+                        dynamic_list_cuda,final_buffer_cuda,dynamic_saved_buffer_cuda,real_static_freq_cuda,phase_list_cuda,new_phase_list_cuda,amp_list_cuda);
             }
         cudaDeviceSynchronize();
         }
@@ -308,8 +301,7 @@ int main ()
             if (dwError != ERR_OK){
                 spcm_dwGetErrorInfo_i32 (hCard, NULL, NULL, szErrorTextBuffer);
                 printf ("Error on SPC_DATA_AVAIL_CARD_LEN: %u (%s)\n", dwError, szErrorTextBuffer);
-                spcm_vClose (hCard);
-                cudaDeviceReset();
+                clean_exit();
                 return EXIT_FAILURE;
             }
             
@@ -319,8 +311,7 @@ int main ()
             {
                 spcm_dwGetErrorInfo_i32 (hCard, NULL, NULL, szErrorTextBuffer);
                 printf ("Error on STARTDMA | WAITDMA: %u (%s)\n", dwError, szErrorTextBuffer);
-                spcm_vClose (hCard);
-                cudaDeviceReset();
+                clean_exit();
                 return EXIT_FAILURE;
             }
 
@@ -331,8 +322,7 @@ int main ()
             {
                 spcm_dwGetErrorInfo_i32 (hCard, NULL, NULL, szErrorTextBuffer);
                 printf ("CARD_START failed: %u (%s)\n", dwError, szErrorTextBuffer);
-                spcm_vClose (hCard);
-                cudaDeviceReset();
+                clean_exit();
                 return EXIT_FAILURE;
             }
             staticThread =std::thread(static_looper);
@@ -346,7 +336,7 @@ int main ()
             if (server_flag){goto start_and_reset;}
             if (stop_flag) break;
             static_pulseflag=false;
-            continue_flag = false;
+            continue_flag = false; // For testing
             static_flag = false;
             
             static_endflag = true;
@@ -354,7 +344,7 @@ int main ()
             while (!static_pulseflag){}
             static_pulseflag=false;
             sPointerPosition=0;
-            for (int cnt = 0; cnt < dynamic_loopcount;cnt++){
+            for (int cnt = 0; cnt < dynamic_loopcount && !iskeypressed;cnt++){
                 if ((dwError = spcm_dwSetParam_i32 (hCard, SPC_M2CMD, M2CMD_DATA_WAITDMA)) != ERR_OK)
                 {
                     if (dwError == ERR_TIMEOUT)
@@ -363,8 +353,7 @@ int main ()
                         spcm_dwGetErrorInfo_i32 (hCard, NULL, NULL, szErrorTextBuffer);
                         printf ("\n... Error: %u (%s)\n", dwError,szErrorTextBuffer);
                     }
-                    spcm_vClose (hCard);
-                    cudaDeviceReset();
+                    clean_exit();
                     return EXIT_FAILURE;
                 }else{       
                     spcm_dwGetParam_i32 (hCard, SPC_DATA_AVAIL_USER_POS,  &lUserPos);
@@ -374,9 +363,7 @@ int main ()
                     if (dwError!=ERR_OK){
                         spcm_dwGetErrorInfo_i32 (hCard, NULL, NULL, szErrorTextBuffer);
                         printf("\n... Error in Setting CardAval1: %u (%s)\n", dwError,szErrorTextBuffer);
-                        spcm_vClose (hCard);
-                        cudaDeviceReset();
-                        return EXIT_FAILURE;
+                        clean_exit();
                     }
                     sPointerPosition += static_length;
                 }
@@ -395,8 +382,7 @@ int main ()
                         spcm_dwGetErrorInfo_i32 (hCard, NULL, NULL, szErrorTextBuffer);
                         printf("\n... Error in Setting CardAval2: %u (%s)\n", dwError,szErrorTextBuffer);
                     }
-                    spcm_vClose (hCard);
-                    cudaDeviceReset();
+                    clean_exit();
                     return EXIT_FAILURE;
                     break;
                 }
@@ -424,12 +410,6 @@ int main ()
     }
     dwError = spcm_dwSetParam_i32 (hCard, SPC_M2CMD, M2CMD_CARD_STOP | M2CMD_DATA_STOPDMA);
 
-    // clean up
-    staticThread.join();
-    serverThread.join();
-    printf ("\nFinished...\n");
-    spcm_vClose (hCard);
-    cudaDeviceReset();
-    
+    clean_exit();
     return EXIT_SUCCESS;
 }

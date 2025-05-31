@@ -1,5 +1,5 @@
 CUDA_PATH ?= /usr/local/cuda-12.1# Path to CUDA installation (with nvcc in bin)
-SMS ?= 75  # SM architectures to compile for
+SMS ?= 75  # SM architectures to compile
 
 ifeq ($(GENCODE_FLAGS),)
 $(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
@@ -12,47 +12,42 @@ endif
 
 ################################################################################
 
-all: build
+all: playback
 
-build: waveform_synthesis.bin
+playback: make_obj waveform_synthesis_playback.bin
 
-# waveform_synthesis.o:waveform_synthesis_streaming.cu # Uncomment to build streaming version
-waveform_synthesis.o:waveform_synthesis_playback.cu # Uncomment to build playback version
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $< 
-cuda_functions.o:lib/cuda_functions.cu
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $< 
-parameters.o:lib/parameters.cu
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $< 
-spcm_cuda_common.o:spcm_header/spcm_cuda_common.cu
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $< 
-server.o:lib/server.cpp
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $< 
-rearrangement1d.o: lib/rearrangement.cpp
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $< 
-waveform_synthesis_exe: waveform_synthesis.o cuda_functions.o parameters.o spcm_cuda_common.o  server.o
+streaming: make_obj waveform_synthesis_streaming.bin
+
+objects/waveform_synthesis_playback.o:waveform_synthesis_playback.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/waveform_synthesis_streaming.o:waveform_synthesis_streaming.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/cuda_functions_streaming.o:lib/cuda_functions_streaming.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/cuda_functions_playback.o:lib/cuda_functions_playback.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/cuda_functions.o:lib/cuda_functions.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/parameters.o:lib/parameters.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/amp_map.o:lib/amp_map.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/spcm_cuda_common.o:spcm_header/spcm_cuda_common.cu
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+objects/server.o:lib/server.cpp
+	$(CUDA_PATH)/bin/nvcc -ccbin g++ -dc -m64 -O3 $(GENCODE_FLAGS) -o $@ -c $<
+waveform_synthesis_playback.bin: objects/waveform_synthesis_playback.o objects/cuda_functions_playback.o objects/cuda_functions.o objects/parameters.o objects/spcm_cuda_common.o objects/server.o objects/amp_map.o
 	$(CUDA_PATH)/bin/nvcc -ccbin g++ -m64 -O3 $(GENCODE_FLAGS) -o $@ $+ -lspcm_linux -lcuda -lculibos
-test_exe: test.o cuda_functions.o parameters.o spcm_cuda_common.o server.o
-	$(CUDA_PATH)/bin/nvcc -ccbin g++ -m64 -O3 $(GENCODE_FLAGS) -o $@ $+ -lspcm_linux -lcuda -lculibos
-testst_exe: testst.o cuda_functions.o parameters.o spcm_cuda_common.o server.o
+waveform_synthesis_streaming.bin: objects/waveform_synthesis_streaming.o objects/cuda_functions_streaming.o objects/cuda_functions.o objects/parameters.o objects/spcm_cuda_common.o objects/server.o objects/amp_map.o
 	$(CUDA_PATH)/bin/nvcc -ccbin g++ -m64 -O3 $(GENCODE_FLAGS) -o $@ $+ -lspcm_linux -lcuda -lculibos
 
-
-run: build
-	./waveform_synthesis_exe
-
-test: test_exe
-
-testrun: test_exe
-	./test_exe
+run: playback
+	./waveform_synthesis_playback
 
 clean:
-	rm -f -r *.o *_exe
-
-clean_lib:
-	rm -f -r *.o
-
-clobber: clean
+	rm -f -r *.o *_exe *.bin objects/
 
 clear: clean
 
-clear_lib: clean_lib
+make_obj:
+	mkdir -p objects

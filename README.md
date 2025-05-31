@@ -32,4 +32,4 @@ The Nvidia NSight Profile of the cuda function in this program is placed in the 
 
 ## Citing
 
-Please see the [paper](https://arxiv.org/abs/2403.15582) correlated with this project. Please contanct Juntian Tu (juntian"at"umd.edu) for issues related to this repository.
+Please see the [paper](https://doi.org/10.1109/TSP.2025.3574958) correlated with this project. Please contanct Juntian Tu (juntian"at"umd.edu) for issues related to this repository.
