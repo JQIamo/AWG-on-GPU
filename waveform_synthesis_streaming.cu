@@ -103,9 +103,6 @@ uint32       lNotifySize =  MEGA_B(2); // The size of data the card will execute
 uint32       lBufferSize =  MEGA_B(4);
 uint64       HBufferSize =  MEGA_B(64); // The actual buffer used on the AWG; must be a power of 2 and should be no more than 4 GB (lower size reduces delay)
 
-// Parameter settings   
-int32       lMaxOutputLevel = 2500; // +-1 Volt
-
 
 // Test params
 
@@ -195,7 +192,6 @@ int main ()
     spcm_dwSetParam_i32 (hCard, SPC_TRIG_ORMASK,    SPC_TMASK_SOFTWARE);  // TEst purporse
     spcm_dwSetParam_i64 (hCard, SPC_LOOPS,          0);                     // forever
     spcm_dwSetParam_i32 (hCard, SPC_CLOCKMODE,      SPC_CM_INTPLL);         // clock mode internal PLL
-    // spcm_dwSetParam_i32 (hCard, SPC_FILTER0,      0);
     spcm_dwSetParam_i64 (hCard, SPC_SAMPLERATE,     llSamplerate);
     spcm_dwSetParam_i32 (hCard, SPC_TIMEOUT,        5*1000);             // Timeout if necessary
     reset_amp(-1, lMaxOutputLevel);

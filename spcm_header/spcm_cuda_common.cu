@@ -95,10 +95,12 @@ void* pvGetRDMABuffer (int lCUDADevIdx, size_t qwDMABufferSize_bytes)
 
     // ----- allocate DMA buffer on GPU -----
     void* pvDMABuffer_gpu = NULL;
-    if (strncmp (stCUDADeviceProp.name, "Xavier", 6) == 0)
+    if (strncmp (stCUDADeviceProp.name, "Xavier", 6) == 0){
+        // printf("cudaHostAlloc\n");
         eCudaErr = cudaHostAlloc (&pvDMABuffer_gpu, qwDMABufferSize_bytes, cudaHostAllocDefault); // required to use cudaHostAlloc on Jetson
-    else
+    }else
         {
+        // printf("cudaMalloc\n");
         eCudaErr = cudaMalloc (&pvDMABuffer_gpu, qwDMABufferSize_bytes);
         }
     if (eCudaErr != cudaSuccess)
@@ -125,21 +127,21 @@ void* pvGetRDMABuffer (int lCUDADevIdx, size_t qwDMABufferSize_bytes)
 #endif
 
 // ----- Returns error description for CUDA FFT error code -----
-const char* szCudaGetErrorText (cufftResult eError)
-    {
-    switch (eError)
-        {
-        case CUFFT_SUCCESS:         return "CUFFT_SUCCESS";
-        case CUFFT_INVALID_PLAN:    return "CUFFT_INVALID_PLAN";
-        case CUFFT_ALLOC_FAILED:    return "CUFFT_ALLOC_FAILED";
-        case CUFFT_INVALID_TYPE:    return "CUFFT_INVALID_TYPE";
-        case CUFFT_INVALID_VALUE:   return "CUFFT_INVALID_VALUE";
-        case CUFFT_INTERNAL_ERROR:  return "CUFFT_INTERNAL_ERROR";
-        case CUFFT_EXEC_FAILED:     return "CUFFT_EXEC_FAILED";
-        case CUFFT_SETUP_FAILED:    return "CUFFT_SETUP_FAILED";
-        case CUFFT_INVALID_SIZE:    return "CUFFT_INVALID_SIZE";
-        case CUFFT_UNALIGNED_DATA:  return "CUFFT_UNALIGNED_DATA";
-        }
-
-    return "<unknown>";
-    }
+// const char* szCudaGetErrorText (cufftResult eError)
+//     {
+//     switch (eError)
+//         {
+//         case CUFFT_SUCCESS:         return "CUFFT_SUCCESS";
+//         case CUFFT_INVALID_PLAN:    return "CUFFT_INVALID_PLAN";
+//         case CUFFT_ALLOC_FAILED:    return "CUFFT_ALLOC_FAILED";
+//         case CUFFT_INVALID_TYPE:    return "CUFFT_INVALID_TYPE";
+//         case CUFFT_INVALID_VALUE:   return "CUFFT_INVALID_VALUE";
+//         case CUFFT_INTERNAL_ERROR:  return "CUFFT_INTERNAL_ERROR";
+//         case CUFFT_EXEC_FAILED:     return "CUFFT_EXEC_FAILED";
+//         case CUFFT_SETUP_FAILED:    return "CUFFT_SETUP_FAILED";
+//         case CUFFT_INVALID_SIZE:    return "CUFFT_INVALID_SIZE";
+//         case CUFFT_UNALIGNED_DATA:  return "CUFFT_UNALIGNED_DATA";
+//         }
+//
+//     return "<unknown>";
+//     }

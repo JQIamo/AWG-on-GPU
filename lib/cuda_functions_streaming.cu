@@ -52,7 +52,7 @@ __global__ void Pre_AccelCombine(double** temp_save_buf,int last_start_index,int
                 int tone_index = j+dynamic_count;
                 double dest_freq = dest_frequency[tone_index];
                 double phi_dest = fma(fma((startFreq[tone_index] - dest_freq),0.5*dynamic_bufferlength_cuda,temp_factor * dest_freq), illSamplerate_cuda ,phase_list[tone_index]);
-                temp +=  sinpi (2.*modf(phi_dest,&dump));
+                temp +=  sin2pi_fast (phi_dest);
             }
         }
         sum += 32767.*istatic_num_cuda[buffer_index] *temp;
@@ -77,7 +77,7 @@ __global__ void Pre_AccelCombine_amp(double** temp_save_buf,int last_start_index
                 int tone_index = j+dynamic_count;
                 double dest_freq = dest_frequency[tone_index];
                 double phi_dest = fma(fma((startFreq[tone_index] - dest_freq),0.5*dynamic_bufferlength_cuda,temp_factor * dest_freq), illSamplerate_cuda ,phase_list[tone_index]);
-                temp += amplist[tone_index] * sinpi (2.*modf(phi_dest,&dump));
+                temp += amplist[tone_index] * sin2pi_fast (phi_dest);
             }
         }
         sum += 32767.*istatic_num_cuda[buffer_index] *temp;
@@ -106,7 +106,7 @@ __global__ void Pre_AccelCombine_amp_mapped(double** temp_save_buf,int last_star
                 double dest_freq = dest_frequency[tone_index];
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(dest_freq),map_interval_cuda,0.5f))];
                 double phi_dest = fma(fma((startFreq[tone_index] - dest_freq),0.5*dynamic_bufferlength_cuda,temp_factor * dest_freq), illSamplerate_cuda ,phase_list[tone_index]);
-                temp += amp_factor * sinpi (2.*modf(phi_dest,&dump));
+                temp += amp_factor * sin2pi_fast (phi_dest);
                 coefficient_corrector+= amp_factor;
             }
         }
@@ -135,7 +135,7 @@ __global__ void Pre_AccelCombine_amp_amp_mapped(double** temp_save_buf,int last_
                 double dest_freq = dest_frequency[tone_index];
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(dest_freq),map_interval_cuda,0.5f))];
                 double phi_dest = fma(fma((startFreq[tone_index] - dest_freq),0.5*dynamic_bufferlength_cuda,temp_factor * dest_freq), illSamplerate_cuda ,phase_list[tone_index]);
-                temp += amp_factor * sinpi (2.*modf(phi_dest,&dump))*amplist[tone_index];
+                temp += amp_factor * sin2pi_fast (phi_dest)*amplist[tone_index];
                 coefficient_corrector+= amp_factor;
             }
         }
@@ -156,7 +156,7 @@ __global__ void AccelCombine(unsigned long long startPosition,double**__restrict
     __shared__ double phi[512];
     size_t checkpoint = 2*i+startPosition+1;
     double k = static_cast<double>(checkpoint)-1.;
-    double s;
+    // double s;
     double ratioks = k*idynamic_bufferlength_cuda;
     double ratiok = fma(ratioks, ratioks- 3.,2.5 )* ratioks *ratioks *ratioks;
     double ratioks1 = ratioks+ idynamic_bufferlength_cuda;
@@ -183,15 +183,15 @@ __global__ void AccelCombine(unsigned long long startPosition,double**__restrict
             for (int j = 0; (j<dynamic_num_cuda[buffer_index]- start_index && j<maximal_index); j++){
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
                 double phase_c1 = fma((k+1.) * illSamplerate_cuda , fma( frequencyDiff[j] , ratiok1,startFrequency[j]),phi[j]);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp);
                 sum += __low2float(temp);
             }
         }else if(checkpoint==__double2uint_rn(dynamic_bufferlength_cuda)){
             for (int j = 0; (j<dynamic_num_cuda[buffer_index]- start_index && j<maximal_index); j++){
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
-                double phase_c1 = modf(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]),&s);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                double phase_c1 = modfeq(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp);
                 sum += __low2float(temp);
             }
@@ -200,7 +200,7 @@ __global__ void AccelCombine(unsigned long long startPosition,double**__restrict
                 double temp_factor = (startFrequency[j]+frequencyDiff[j]) * illSamplerate_cuda;
                 double phase_c = fma(temp_factor , (k-dynamic_bufferlength_cuda) ,fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
                 double phase_c1 = phase_c + temp_factor;
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp);
                 sum += __low2float(temp);
             }
@@ -222,7 +222,7 @@ __global__ void AccelCombine_amp(unsigned long long startPosition,double**__rest
     __shared__ float amp[512];
     size_t checkpoint = 2*i+startPosition+1;
     double k = static_cast<double>(checkpoint)-1.;
-    double s;
+    // double s;
     double ratioks = k*idynamic_bufferlength_cuda;
     double ratiok = fma(ratioks, ratioks- 3.,2.5 )* ratioks *ratioks *ratioks;
     double ratioks1 = ratioks+ idynamic_bufferlength_cuda;
@@ -251,15 +251,15 @@ __global__ void AccelCombine_amp(unsigned long long startPosition,double**__rest
             for (int j = 0; (j<dynamic_num_cuda[buffer_index]- start_index && j<maximal_index); j++){
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
                 double phase_c1 = fma((k+1.) * illSamplerate_cuda , fma( frequencyDiff[j] , ratiok1,startFrequency[j]),phi[j]);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp)*amp[j];
                 sum += __low2float(temp)*amp[j];
             }
         }else if(checkpoint==__double2ull_rn(dynamic_bufferlength_cuda)){
             for (int j = 0; (j<dynamic_num_cuda[buffer_index]- start_index && j<maximal_index); j++){
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
-                double phase_c1 = modf(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]),&s);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                double phase_c1 = modfeq(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp)*amp[j];
                 sum += __low2float(temp)*amp[j];
             }
@@ -268,7 +268,7 @@ __global__ void AccelCombine_amp(unsigned long long startPosition,double**__rest
                 double temp_factor = (startFrequency[j]+frequencyDiff[j]) * illSamplerate_cuda;
                 double phase_c = fma(temp_factor , (k-dynamic_bufferlength_cuda) ,fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
                 double phase_c1 = phase_c + temp_factor;
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp)*amp[j];
                 sum += __low2float(temp)*amp[j];
             }
@@ -291,7 +291,7 @@ __global__ void AccelCombine_amp_modulated(unsigned long long startPosition,doub
     __shared__ float newamp[512];
     size_t checkpoint = 2*i+startPosition+1;
     double k = static_cast<double>(checkpoint)-1.;
-    double s;
+    // double s;
     double ratioks = k*idynamic_bufferlength_cuda;
     double ratiok = fma(ratioks, ratioks- 3.,2.5 )* ratioks *ratioks *ratioks;
     double ratioks1 = ratioks+ idynamic_bufferlength_cuda;
@@ -323,15 +323,15 @@ __global__ void AccelCombine_amp_modulated(unsigned long long startPosition,doub
                 float amp_ramper = __fmaf_rn(newamp[j] - old_amp, static_cast<float>(ratioks),old_amp);
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
                 double phase_c1 = fma((k+1.) * illSamplerate_cuda , fma( frequencyDiff[j] , ratiok1,startFrequency[j]),phi[j]);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp)*amp_ramper;
                 sum += __low2float(temp)*amp_ramper;
             }
         }else if(checkpoint==__double2ull_rn(dynamic_bufferlength_cuda)){
             for (int j = 0; (j<dynamic_num_cuda[buffer_index]- start_index && j<maximal_index); j++){
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
-                double phase_c1 = modf(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]),&s);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                double phase_c1 = modfeq(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp)*newamp[j];
                 sum += __low2float(temp)*newamp[j];
             }
@@ -340,7 +340,7 @@ __global__ void AccelCombine_amp_modulated(unsigned long long startPosition,doub
                 double temp_factor = (startFrequency[j]+frequencyDiff[j]) * illSamplerate_cuda;
                 double phase_c = fma(temp_factor , (k-dynamic_bufferlength_cuda) ,fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
                 double phase_c1 = phase_c + temp_factor;
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 sum1 += __high2float(temp)*newamp[j];
                 sum += __low2float(temp)*newamp[j];
             }
@@ -361,7 +361,7 @@ __global__ void AccelCombine_amp_mapped(unsigned long long startPosition,double*
     __shared__ double phi[512];
     size_t checkpoint = 2*i+startPosition+1;
     double k = static_cast<double>(checkpoint)-1.;
-    double s;
+    // double s;
     double ratioks = k*idynamic_bufferlength_cuda;
     double ratiok = fma(ratioks, ratioks- 3.,2.5 )* ratioks *ratioks *ratioks;
     double ratioks1 = ratioks+ idynamic_bufferlength_cuda;
@@ -398,7 +398,7 @@ __global__ void AccelCombine_amp_mapped(unsigned long long startPosition,double*
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
                 double phase_c1 = fma((k+1.) * illSamplerate_cuda , fma( frequencyDiff[j] , ratiok1,startFrequency[j]),phi[j]);
                 float amp_factor = amp_map[static_cast<int>(fmaf(fmaf(static_cast<float>(frequencyDiff[j]),static_cast<float>(freqr),static_cast<float>(startFrequency[j])),map_interval_cuda,0.5f))];
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor;
                 temp_amp += __low2float(temp)*amp_factor;
                 coefficient_corrector += amp_factor;
@@ -407,8 +407,8 @@ __global__ void AccelCombine_amp_mapped(unsigned long long startPosition,double*
             for (int j = 0; (j<dynamic_num- start_index && j<maximal_index); j++){
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(frequencyDiff[j])+static_cast<float>(startFrequency[j]),map_interval_cuda,0.5f))];
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
-                double phase_c1 = modf(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]),&s);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                double phase_c1 = modfeq(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor;
                 temp_amp += __low2float(temp)*amp_factor;
                 coefficient_corrector += amp_factor;
@@ -419,7 +419,7 @@ __global__ void AccelCombine_amp_mapped(unsigned long long startPosition,double*
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(frequencyDiff[j])+static_cast<float>(startFrequency[j]),map_interval_cuda,0.5f))];
                 double phase_c = fma(temp_factor , (k-dynamic_bufferlength_cuda) ,fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
                 double phase_c1 = phase_c + temp_factor;
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor;
                 temp_amp += __low2float(temp)*amp_factor;
                 coefficient_corrector += amp_factor;
@@ -443,7 +443,7 @@ __global__ void AccelCombine_amp_amp_mapped(unsigned long long startPosition,dou
     __shared__ float amp[512];
     size_t checkpoint = 2*i+startPosition+1;
     double k = static_cast<double>(checkpoint)-1.;
-    double s;
+    // double s;
     double ratioks = k*idynamic_bufferlength_cuda;
     double ratiok = fma(ratioks, ratioks- 3.,2.5 )* ratioks *ratioks *ratioks;
     double ratioks1 = ratioks+ idynamic_bufferlength_cuda;
@@ -481,7 +481,7 @@ __global__ void AccelCombine_amp_amp_mapped(unsigned long long startPosition,dou
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
                 double phase_c1 = fma((k+1.) * illSamplerate_cuda , fma( frequencyDiff[j] , ratiok1,startFrequency[j]),phi[j]);
                 float amp_factor = amp_map[static_cast<int>(fmaf(fmaf(static_cast<float>(frequencyDiff[j]),static_cast<float>(freqr),static_cast<float>(startFrequency[j])),map_interval_cuda,0.5f))];
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor*amp[j];
                 temp_amp += __low2float(temp)*amp_factor*amp[j];
                 coefficient_corrector += amp_factor;
@@ -490,8 +490,8 @@ __global__ void AccelCombine_amp_amp_mapped(unsigned long long startPosition,dou
             for (int j = 0; (j<dynamic_num- start_index && j<maximal_index); j++){
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(frequencyDiff[j])+static_cast<float>(startFrequency[j]),map_interval_cuda,0.5f))];
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
-                double phase_c1 = modf(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]),&s);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                double phase_c1 = modfeq(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor*amp[j];
                 temp_amp += __low2float(temp)*amp_factor*amp[j];
                 coefficient_corrector += amp_factor;
@@ -502,7 +502,7 @@ __global__ void AccelCombine_amp_amp_mapped(unsigned long long startPosition,dou
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(frequencyDiff[j])+static_cast<float>(startFrequency[j]),map_interval_cuda,0.5f))];
                 double phase_c = fma(temp_factor , (k-dynamic_bufferlength_cuda) ,fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
                 double phase_c1 = phase_c + temp_factor;
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor*amp[j];
                 temp_amp += __low2float(temp)*amp_factor*amp[j];
                 coefficient_corrector += amp_factor;
@@ -528,7 +528,7 @@ __global__ void AccelCombine_amp_mapped_modulated(unsigned long long startPositi
     __shared__ float newamp[512];
     size_t checkpoint = 2*i+startPosition+1;
     double k = static_cast<double>(checkpoint)-1.;
-    double s;
+    // double s;
     double ratioks = k*idynamic_bufferlength_cuda;
     double ratiok = fma(ratioks, ratioks- 3.,2.5 )* ratioks *ratioks *ratioks;
     double ratioks1 = ratioks+ idynamic_bufferlength_cuda;
@@ -569,7 +569,7 @@ __global__ void AccelCombine_amp_mapped_modulated(unsigned long long startPositi
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
                 double phase_c1 = fma((k+1.) * illSamplerate_cuda , fma( frequencyDiff[j] , ratiok1,startFrequency[j]),phi[j]);
                 float amp_factor = amp_map[static_cast<int>(fmaf(fmaf(static_cast<float>(frequencyDiff[j]),static_cast<float>(freqr),static_cast<float>(startFrequency[j])),map_interval_cuda,0.5f))];
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor*amp_ramper;
                 temp_amp += __low2float(temp)*amp_factor*amp_ramper;
                 coefficient_corrector += amp_factor;
@@ -578,8 +578,8 @@ __global__ void AccelCombine_amp_mapped_modulated(unsigned long long startPositi
             for (int j = 0; (j<dynamic_num- start_index && j<maximal_index); j++){
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(frequencyDiff[j])+static_cast<float>(startFrequency[j]),map_interval_cuda,0.5f))];
                 double phase_c =  fma(k * illSamplerate_cuda , fma(frequencyDiff[j] , ratiok,startFrequency[j]),phi[j]);
-                double phase_c1 = modf(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]),&s);
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                double phase_c1 = modfeq(fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor*newamp[j];
                 temp_amp += __low2float(temp)*amp_factor*newamp[j];
                 coefficient_corrector += amp_factor;
@@ -590,7 +590,7 @@ __global__ void AccelCombine_amp_mapped_modulated(unsigned long long startPositi
                 float amp_factor = amp_map[static_cast<int>(fmaf(static_cast<float>(frequencyDiff[j])+static_cast<float>(startFrequency[j]),map_interval_cuda,0.5f))];
                 double phase_c = fma(temp_factor , (k-dynamic_bufferlength_cuda) ,fma(fma(frequencyDiff[j],0.5,startFrequency[j]),dynamic_bufferlength_cuda*illSamplerate_cuda,phi[j]));
                 double phase_c1 = phase_c + temp_factor;
-                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modf(phase_c,&s),M_2PI*modf(phase_c1,&s)));
+                half2 temp =  h2sin (__floats2half2_rn(M_2PI*modfeq(phase_c),M_2PI*modfeq(phase_c1)));
                 temp_amp1 += __high2float(temp)*amp_factor*newamp[j];
                 temp_amp += __low2float(temp)*amp_factor*newamp[j];
                 coefficient_corrector += amp_factor;
@@ -678,165 +678,34 @@ void cuda_cleanup ()
 
 int dynamicBufferInit(){
     for (int i = 0; i < lNumCh; i++){
-        eCudaErr = cudaMalloc ((void **)&saved_buffer[i], sizeof(double)/sizeof(short)*lBytesPerChannelInNotifySize); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating saved_buffer on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            return 1;   
-            }
-
-        eCudaErr = cudaMalloc ((void **)&dynamic_saved_buffer[i], dynamic_loopcount*lBytesPerChannelInNotifySize); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating dynamic_saved_buffer on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            return 1;   
-            }
+        CUDA_CHECK(cudaMalloc ((void **)&saved_buffer[i], sizeof(double)/sizeof(short)*lBytesPerChannelInNotifySize)); //Configure software buffer
+        CUDA_CHECK(cudaMalloc ((void **)&dynamic_saved_buffer[i], dynamic_loopcount*lBytesPerChannelInNotifySize)); //Configure software buffer
     }
     
-    eCudaErr = cudaMalloc ((void**)&real_destination_freq_cuda, dynamic_total*sizeof(double)); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("Allocating real_destination_freq_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
+    CUDA_CHECK(cudaMalloc ((void**)&real_destination_freq_cuda, dynamic_total*sizeof(double))); //Configure software buffer
+    CUDA_CHECK(cudaMemcpy(real_destination_freq_cuda,real_destination_freq,dynamic_total*sizeof(double),cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc ((void**)&dynamic_list_cuda, dynamic_total*sizeof(int))); //Configure software buffer
+    CUDA_CHECK(cudaMalloc ((void**)&static_list_cuda, sizeof(static_list))); //Configure software buffer
+    CUDA_CHECK(cudaMalloc ((void**)&saved_buffer_cuda, sizeof(saved_buffer))); //Configure software buffer
+    CUDA_CHECK(cudaMemcpy (static_list_cuda, static_list,sizeof(static_list),cudaMemcpyHostToDevice)); //Configure software buffer
+    CUDA_CHECK(cudaMemcpy (dynamic_list_cuda, dynamic_list,dynamic_total*sizeof(int),cudaMemcpyHostToDevice)); //Configure software buffer
+    CUDA_CHECK(cudaMemcpy (saved_buffer_cuda, saved_buffer,sizeof(saved_buffer),cudaMemcpyHostToDevice)); //Configure software buffer
+    CUDA_CHECK(cudaMemcpyToSymbol(dynamic_num_cuda, &dynamic_num, sizeof(dynamic_num)));
 
-        return 1;
-        }    
-    eCudaErr = cudaMemcpy(real_destination_freq_cuda,real_destination_freq,dynamic_total*sizeof(double),cudaMemcpyHostToDevice);
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpy real_destination_freq_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        } 
-
-    eCudaErr = cudaMalloc ((void**)&dynamic_list_cuda, dynamic_total*sizeof(int)); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("Allocating dynamic_list_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return EXIT_FAILURE;
-        }
-
-    eCudaErr = cudaMalloc ((void**)&static_list_cuda, sizeof(static_list)); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("Allocating static_list_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return EXIT_FAILURE;
-        }
-    eCudaErr = cudaMalloc ((void**)&saved_buffer_cuda, sizeof(saved_buffer)); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("Allocating saved_buffer_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return EXIT_FAILURE;
-        }
-
-    eCudaErr = cudaMemcpy (static_list_cuda, static_list,sizeof(static_list),cudaMemcpyHostToDevice); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpy static_list_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        }            
-    eCudaErr = cudaMemcpy (dynamic_list_cuda, dynamic_list,dynamic_total*sizeof(int),cudaMemcpyHostToDevice); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpy dynamic_list_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        }    
-    eCudaErr = cudaMemcpy (saved_buffer_cuda, saved_buffer,sizeof(saved_buffer),cudaMemcpyHostToDevice); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpy saved_buffer_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        }
-    eCudaErr = cudaMemcpyToSymbol(dynamic_num_cuda, &dynamic_num, sizeof(dynamic_num));
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpyToSymbol dynamic_num_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return EXIT_FAILURE;
-        }
     double dylength = dynamic_buffersize/2;
-    eCudaErr = cudaMemcpyToSymbol(dynamic_bufferlength_cuda, &dylength, sizeof(dylength));
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpyToSymbol dynamic_bufferlength_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return EXIT_FAILURE;
-        }
+    CUDA_CHECK(cudaMemcpyToSymbol(dynamic_bufferlength_cuda, &dylength, sizeof(dylength)));
     double_temp = 1./dylength;
-    eCudaErr = cudaMemcpyToSymbol (idynamic_bufferlength_cuda, &double_temp, sizeof(double)); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpyToSymbol idynamic_bufferlength_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        }
+    CUDA_CHECK(cudaMemcpyToSymbol (idynamic_bufferlength_cuda, &double_temp, sizeof(double))); //Configure software buffer
     double_temp = dynamic_loopcount;
-    eCudaErr = cudaMemcpyToSymbol (dynamic_loopcount_cuda, &double_temp, sizeof(double_temp)); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpyToSymbol dynamic_loopcount_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        }
-    eCudaErr = cudaMalloc ((void**)&dFreq_cuda, dynamic_total*sizeof(double)); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating dFreq_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            spcm_vClose (hCard);
-            cuda_cleanup();
-            return EXIT_FAILURE;
-            }
-    
-    eCudaErr = cudaMalloc ((void**)&dDiff_cuda, dynamic_total*sizeof(double)); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating dDiff_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            spcm_vClose (hCard);
-            cuda_cleanup();
-            return EXIT_FAILURE;
-            }
-    eCudaErr = cudaMalloc ((void**)&dphi_cuda, dynamic_total*sizeof(double)); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating dphi_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            spcm_vClose (hCard);
-            cuda_cleanup();
-            return EXIT_FAILURE;
-            }
-    eCudaErr = cudaMalloc ((void**)&damp_cuda, dynamic_total*sizeof(float)); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating damp_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            spcm_vClose (hCard);
-            cuda_cleanup();
-            return EXIT_FAILURE;
-            }
+    CUDA_CHECK(cudaMemcpyToSymbol (dynamic_loopcount_cuda, &double_temp, sizeof(double_temp))); //Configure software buffer
+    CUDA_CHECK(cudaMalloc ((void**)&dFreq_cuda, dynamic_total*sizeof(double))); //Configure software buffer
+    CUDA_CHECK(cudaMalloc ((void**)&dDiff_cuda, dynamic_total*sizeof(double))); //Configure software buffer
+    CUDA_CHECK(cudaMalloc ((void**)&dphi_cuda, dynamic_total*sizeof(double))); //Configure software buffer
+    CUDA_CHECK(cudaMalloc ((void**)&damp_cuda, dynamic_total*sizeof(float))); //Configure software buffer
     for (int i =0; i< lNumCh;i++){
-        eCudaErr = cudaMalloc ((void **)&temp_buffer[i], sizeof(double)/sizeof(short)*lBytesPerChannelInNotifySize); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating temp_buffer on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-            return 1;   
-            }
+        CUDA_CHECK(cudaMalloc ((void **)&temp_buffer[i], sizeof(double)/sizeof(short)*lBytesPerChannelInNotifySize)); //Configure software buffer
     }
-    eCudaErr = cudaMalloc ((void**)&temp_buffer_cuda, sizeof(temp_buffer)); //Configure software buffer
-        if (eCudaErr != cudaSuccess)
-            {
-            printf ("Allocating temp_buffer_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-            return EXIT_FAILURE;
-            }
-    eCudaErr = cudaMemcpy (temp_buffer_cuda, temp_buffer,sizeof(temp_buffer),cudaMemcpyHostToDevice); //Configure software buffer
-    if (eCudaErr != cudaSuccess)
-        {
-        printf ("cudaMemcpy temp_buffer_cuda on GPU failed: %s\n",cudaGetErrorString(eCudaErr));
-
-        return 1;
-        }
+    CUDA_CHECK(cudaMalloc ((void**)&temp_buffer_cuda, sizeof(temp_buffer))); //Configure software buffer
+    CUDA_CHECK(cudaMemcpy (temp_buffer_cuda, temp_buffer,sizeof(temp_buffer),cudaMemcpyHostToDevice)); //Configure software buffer
     return 0;
 }

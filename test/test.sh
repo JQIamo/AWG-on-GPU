@@ -1,0 +1,1 @@
+gcc -shared -fPIC dummy_spcm.cpp -o libspcm_linux.so

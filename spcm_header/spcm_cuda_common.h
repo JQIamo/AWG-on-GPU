@@ -1,7 +1,7 @@
 // ----- This file contains functions that are used by multiple CUDA RDMA examples -----
 
 #include "dlltyp.h"
-#include <cufft.h>
+// #include <cufft.h>
 
 // ----- Init CUDA device without RDMA support (e.g. on Windows) ----
 bool bInitCUDADevice (int lCUDADevIdx);
@@ -13,4 +13,4 @@ bool bInitCUDADevice (int lCUDADevIdx);
 void* pvGetRDMABuffer (int lCUDADevIdx, size_t qwDMABufferSize_bytes);
 
 // ---returns description for CUDA FFT error
-const char* szCudaGetErrorText (cufftResult eError);
+// const char* szCudaGetErrorText (cufftResult eError);
